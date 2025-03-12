@@ -1,365 +1,385 @@
-// Add more header files if required...
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-#include <limits.h>
 
 #define MAX_PROCESSES 100
 
-/* ========================================================================================*/
-// Structure to store process information
-typedef struct
-{ // Add more variables to store process information if required...
-    int pid;
-    int priority;
-    int burst_time;
-    int arrival_time;
-    int remaining_time;
-    int waiting_time;
-    int turnaround_time;
-    int completion_time;
-    bool is_completed;
-
+// structure to store process details
+typedef struct {
+    int pid;             // process id
+    int burst_time;      // cpu burst time
+    int priority;        // process priority
+    int arrival_time;    // arrival time
+    int waiting_time;    // waiting time
+    int turnaround_time; // turnaround time
+    int remaining_time;  // remaining time for preemptive scheduling
 } Process;
 
-/* ========================================================================================*/
-// Add more Global variables if required...
-Process processes[MAX_PROCESSES];
-int num_processes = 0;
-
-/* ========================================================================================*/
-// Add more Function prototypes suitable your implementation if required...
-void fcfs();                        // First Come First Serve Scheduling
-void sjf_non_preemptive();          // Shortest Job First - Non-preemptive
-void srt_preemptive();              // Shortest Remaining Time - Preemptive
-void round_robin(int time_quantum); // Round Robin Scheduling
-void priority_non_preemptive();     // Priority Scheduling - Non-preemptive
-void read_processes_from_file(const char *filename); //Read and process the process-related information form `input.txt` file
-void calculate_average_times();     // Calculate and display average waiting & turnaround times
-void display_results();             // Display scheduling results
-void display_process_info();        // Display process details before scheduling
-void clear_input_buffer();          // Clears input buffer to prevent invalid input issues
-void reset_process_states();        // Resets process variables before each scheduling run
-int min(int a, int b);              // Utility function to find the minimum of two numbers
-
-/* ========================================================================================*/
-// Main function
-int main()
-{
-    // Add more variables suitable for your implementation if required...
-    int choice;
-    int time_quantum;
-    char input[100]; // Buffer to store user input
-
-    // Read process data from file
-    read_processes_from_file("input.txt");
-
-    // User-driven menu
-    while (1)
-    {
-        printf("\n                 CPU Scheduling Algorithms\n");
-        printf("|-----------------------------------------------------------|\n");
-        printf("|   1. First-Come, First-Served (FCFS)                      |\n");
-        printf("|   2. Shortest Job First (SJF) - Nonpreemptive             |\n");
-        printf("|   3. Shortest Remaining Time (SRT) - Preemptive           |\n");
-        printf("|   4. Round Robin (RR)                                     |\n");
-        printf("|   5. Priority Scheduling - Nonpreemptive                  |\n");
-        printf("|   0. Exit                                                 |\n");
-        printf("|-----------------------------------------------------------|\n");
-
-        printf("\nEnter your choice: ");
-        if (!fgets(input, sizeof(input), stdin))
-        {
-            // Handle EOF (e.g., Ctrl+D)
-            printf("\nExiting program.\n\n");
-            break;
-        }
-
-        // Validate input: check if it's an integer
-        if (sscanf(input, "%d", &choice) != 1)
-        {
-            printf("Invalid input. Please enter an integer between 0 and 5.\n");
-            continue;
-        }
-
-        printf("\n");
-
-        switch (choice)
-        {
-        case 1:
-            fcfs();
-            break;
-        case 2:
-            sjf_non_preemptive();
-            break;
-        case 3:
-            srt_preemptive();
-            break;
-        case 4:
-            printf("Enter time quantum for Round Robin Scheduling: ");
-            printf("\n");
-            scanf("%d", &time_quantum);
-            clear_input_buffer(); // Clear the buffer after reading input
-            round_robin(time_quantum);
-            break;
-        case 5:
-            priority_non_preemptive();
-            break;
-        case 0:
-            printf("Exiting program.\n\n");
-            exit(0);
-        default:
-            printf("Invalid choice. Please try again.\n");
-        }
+// reads process information from input.txt (skips the first two header lines)
+int read_processes(Process process_list[]) {
+    FILE *file = fopen("input.txt", "r");
+    if (file == NULL) {
+        perror("Error opening input.txt");
+        exit(1);
     }
-
-    return 0;
+    
+    char buffer[256];
+    // skip the first two header lines
+    fgets(buffer, sizeof(buffer), file);
+    fgets(buffer, sizeof(buffer), file);
+    
+    int count = 0;
+    // format string to read "P" followed by the pid
+    while (fscanf(file, " P%d %d %d %d", 
+                  &process_list[count].pid, 
+                  &process_list[count].burst_time, 
+                  &process_list[count].priority, 
+                  &process_list[count].arrival_time) == 4) {
+        process_list[count].waiting_time = 0;
+        process_list[count].turnaround_time = 0;
+        process_list[count].remaining_time = process_list[count].burst_time;
+        count++;
+        if (count >= MAX_PROCESSES) break;
+    }
+    fclose(file);
+    return count;
 }
 
-/* ========================================================================================*/
-// Function to read processes from a file (PLEASE DONOT MODIFY THIS FUNCTION CODE!!!)
-void read_processes_from_file(const char *filename)
-{
-    FILE *file = fopen(filename, "r");
-    if (!file)
-    {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
+// ---------------------------------------------------------------------------
+// 1. FCFS SCHEDULING
+// ---------------------------------------------------------------------------
+void fcfs(Process process_list[], int num_processes) {
+    Process proc[MAX_PROCESSES];
+    // copy original data
+    for (int i = 0; i < num_processes; i++) {
+        proc[i] = process_list[i];
     }
-
-    // Buffer to hold each line from the file
-    char line[256];
-    int line_number = 0;
-
-    // Skip the first two lines (header and separator)
-    while (line_number < 2 && fgets(line, sizeof(line), file))
-    {
-        line_number++;
+    
+    // sort by arrival time (simple bubble sort)
+    for (int i = 0; i < num_processes - 1; i++) {
+        for (int j = 0; j < num_processes - i - 1; j++) {
+            if (proc[j].arrival_time > proc[j + 1].arrival_time) {
+                Process temp = proc[j];
+                proc[j] = proc[j + 1];
+                proc[j + 1] = temp;
+            }
+        }
     }
+    
+    int current_time = 0;
+    float total_waiting = 0, total_turnaround = 0;
+    
+    // compute waiting and turnaround times
+    for (int i = 0; i < num_processes; i++) {
+        if (current_time < proc[i].arrival_time) {
+            current_time = proc[i].arrival_time;
+        }
+        proc[i].waiting_time = current_time - proc[i].arrival_time;
+        current_time += proc[i].burst_time;
+        proc[i].turnaround_time = proc[i].waiting_time + proc[i].burst_time;
+        
+        total_waiting += proc[i].waiting_time;
+        total_turnaround += proc[i].turnaround_time;
+    }
+    
+    // print results
+    printf("\nFCFS Statistics...\n\n");
+    printf("Process    Waiting Time    Turnaround Time\n");
+    for (int i = 0; i < num_processes; i++) {
+        printf("P%-1d%14d%18d\n",
+               proc[i].pid,
+               proc[i].waiting_time,
+               proc[i].turnaround_time);
+    }
+    printf("\nAverage Waiting Time: %.2f\n", total_waiting / num_processes);
+    printf("\nAverage Turnaround Time: %.2f\n", total_turnaround / num_processes);
+}
 
-    // Read process data from the file
-    while (fgets(line, sizeof(line), file))
-    {
-        // Skip lines with separators like "====" or "----"
-        if (line[0] == '=' || line[0] == '-')
-        {
+// ---------------------------------------------------------------------------
+// 2. SJF (NONPREEMPTIVE) SCHEDULING
+// ---------------------------------------------------------------------------
+void sjf(Process process_list[], int num_processes) {
+    Process proc[MAX_PROCESSES];
+    for (int i = 0; i < num_processes; i++) {
+        proc[i] = process_list[i];
+    }
+    
+    int completed = 0;
+    int current_time = 0;
+    float total_waiting = 0, total_turnaround = 0;
+    int visited[MAX_PROCESSES] = {0};
+    
+    while (completed < num_processes) {
+        int selected_index = -1;
+        int min_burst = 99999;
+        
+        // pick the process with the smallest burst among those that have arrived
+        for (int i = 0; i < num_processes; i++) {
+            if (!visited[i] &&
+                proc[i].arrival_time <= current_time &&
+                proc[i].burst_time < min_burst) {
+                min_burst = proc[i].burst_time;
+                selected_index = i;
+            }
+        }
+        
+        if (selected_index == -1) {
+            current_time++; // no process has arrived yet
             continue;
         }
+        
+        visited[selected_index] = 1;
+        proc[selected_index].waiting_time = current_time - proc[selected_index].arrival_time;
+        current_time += proc[selected_index].burst_time;
+        proc[selected_index].turnaround_time =
+            proc[selected_index].waiting_time + proc[selected_index].burst_time;
+        
+        total_waiting += proc[selected_index].waiting_time;
+        total_turnaround += proc[selected_index].turnaround_time;
+        completed++;
+    }
+    
+    // print results
+    printf("\nSJF (Nonpreemptive) Statistics...\n\n");
+    printf("Process    Waiting Time    Turnaround Time\n");
+    for (int i = 0; i < num_processes; i++) {
+        printf("P%-1d%14d%18d\n",
+               proc[i].pid,
+               proc[i].waiting_time,
+               proc[i].turnaround_time);
+    }
+    printf("\nAverage Waiting Time: %.2f\n", total_waiting / num_processes);
+    printf("\nAverage Turnaround Time: %.2f\n", total_turnaround / num_processes);
+}
 
-        char pid_str[10]; // Buffer to store process name like "P1" or "1"
-        int pid, priority, burst_time, arrival_time;
+// ---------------------------------------------------------------------------
+// 3. SRT (PREEMPTIVE) SCHEDULING
+// ---------------------------------------------------------------------------
+void srt(Process process_list[], int num_processes) {
+    Process proc[MAX_PROCESSES];
+    for (int i = 0; i < num_processes; i++) {
+        proc[i] = process_list[i];
+        proc[i].remaining_time = proc[i].burst_time;
+    }
+    
+    int current_time = 0, completed = 0;
+    float total_waiting = 0, total_turnaround = 0;
+    
+    while (completed < num_processes) {
+        int selected_index = -1;
+        int min_remaining = 99999;
+        
+        // pick the process with the smallest remaining time among those that have arrived
+        for (int i = 0; i < num_processes; i++) {
+            if (proc[i].arrival_time <= current_time &&
+                proc[i].remaining_time > 0 &&
+                proc[i].remaining_time < min_remaining) {
+                min_remaining = proc[i].remaining_time;
+                selected_index = i;
+            }
+        }
+        
+        // if no process is ready, increment time
+        if (selected_index == -1) {
+            current_time++;
+            continue;
+        }
+        
+        // run for 1 time unit
+        proc[selected_index].remaining_time--;
+        current_time++;
+        
+        // if the process finishes
+        if (proc[selected_index].remaining_time == 0) {
+            completed++;
+            int finish_time = current_time;
+            proc[selected_index].waiting_time =
+                finish_time - proc[selected_index].burst_time - proc[selected_index].arrival_time;
+            proc[selected_index].turnaround_time =
+                finish_time - proc[selected_index].arrival_time;
+            
+            total_waiting += proc[selected_index].waiting_time;
+            total_turnaround += proc[selected_index].turnaround_time;
+        }
+    }
+    
+    // print results
+    printf("\nSRT (Preemptive) Statistics...\n\n");
+    printf("Process    Waiting Time    Turnaround Time\n");
+    for (int i = 0; i < num_processes; i++) {
+        printf("P%-1d%14d%18d\n",
+               proc[i].pid,
+               proc[i].waiting_time,
+               proc[i].turnaround_time);
+    }
+    printf("\nAverage Waiting Time: %.2f\n", total_waiting / num_processes);
+    printf("\nAverage Turnaround Time: %.2f\n", total_turnaround / num_processes);
+}
 
-        // Read the process ID and other values
-        if (sscanf(line, "%s %d %d %d", pid_str, &burst_time, &priority, &arrival_time) == 4)
-        {
-            // Extract numeric part from 'P1' or read directly if it's just '1'
-            if (sscanf(pid_str, "P%d", &pid) != 1)
-            { // Check if it starts with 'P'
-                if (sscanf(pid_str, "%d", &pid) != 1)
-                { // Otherwise, try reading as a number
-                    printf("Invalid process ID format: %s (skipped)\n", pid_str);
-                    continue; // Skip invalid process IDs
+// ---------------------------------------------------------------------------
+// 4. ROUND ROBIN (RR) SCHEDULING
+// ---------------------------------------------------------------------------
+void round_robin(Process process_list[], int num_processes) {
+    int time_quantum;
+    printf("Enter Time Quantum: ");
+    scanf("%d", &time_quantum);
+    
+    Process proc[MAX_PROCESSES];
+    for (int i = 0; i < num_processes; i++) {
+        proc[i] = process_list[i];
+        proc[i].remaining_time = proc[i].burst_time;
+    }
+    
+    int current_time = 0, completed = 0;
+    float total_waiting = 0, total_turnaround = 0;
+    
+    while (completed < num_processes) {
+        int all_done = 1;
+        for (int i = 0; i < num_processes; i++) {
+            // if this process can run
+            if (proc[i].remaining_time > 0 &&
+                proc[i].arrival_time <= current_time) {
+                all_done = 0;
+                if (proc[i].remaining_time > time_quantum) {
+                    proc[i].remaining_time -= time_quantum;
+                    current_time += time_quantum;
+                } else {
+                    current_time += proc[i].remaining_time;
+                    proc[i].remaining_time = 0;
+                    completed++;
+                    proc[i].waiting_time =
+                        current_time - proc[i].burst_time - proc[i].arrival_time;
+                    proc[i].turnaround_time =
+                        current_time - proc[i].arrival_time;
+                    
+                    total_waiting += proc[i].waiting_time;
+                    total_turnaround += proc[i].turnaround_time;
                 }
             }
-
-            // Store the process data
-            processes[num_processes].pid = pid;
-            processes[num_processes].priority = priority;
-            processes[num_processes].burst_time = burst_time;
-            processes[num_processes].arrival_time = arrival_time;
-            processes[num_processes].remaining_time = burst_time; // Remaining time equals burst time initially
-            processes[num_processes].waiting_time = 0;            // Initialize waiting time for aging
-            num_processes++;                                      // Increment process count
         }
-        else
-        {
-            printf("Invalid line format: %s (skipped)\n", line); // Handle invalid data lines
+        if (all_done) {
+            current_time++; // move time forward if no process is ready
         }
     }
-
-    // Close the file after reading
-    fclose(file);
-
-    // Display the loaded process information
-    display_process_info();
-}
-
-/* ========================================================================================*/
-// Function to reset process states
-void reset_process_states()
-{
-    // Also reset other process information variables if you have added to the 'Process' structure...
-    for (int i = 0; i < num_processes; i++)
-    {
-        processes[i].remaining_time = processes[i].burst_time;
-        processes[i].waiting_time = 0;
-        processes[i].turnaround_time = 0;
-        processes[i].completion_time = 0;
-        processes[i].is_completed = false;
-    }
-}
-
-/* ========================================================================================*/
-// Function to clear the input buffer (PLEASE DO NOT MODIFY THIS FUNCTION CODE!!!)
-void clear_input_buffer()
-{
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF)
-        ; // Consume characters until newline or EOF
-}
-
-/* ========================================================================================*/
-// Function to display the scheduling statistics
-void display_process_info()
-{
-    // Print fetched values in a table format
-    printf("\n\n             Process Scheduling Information\n");
-    printf("----------------------------------------------------------\n");
-    printf("  | %-5s | %-12s | %-12s | %-12s |\n", "PID", "Burst Time", "Priority", "Arrival Time");
-    printf("----------------------------------------------------------\n");
-
-    for (int i = 0; i < num_processes; i++)
-    {
-        printf("  | %-5d | %-12d | %-12d | %-12d |\n",
-               processes[i].pid, processes[i].burst_time,
-               processes[i].priority, processes[i].arrival_time);
-    }
-
-    printf("----------------------------------------------------------\n\n");
-}
-
-/* ========================================================================================*/
-// Finding minmum of two numbers
-int min(int a, int b)
-{
-    return (a < b) ? a : b;
-}
-
-/* ========================================================================================*/
-// Calculate Average Waiting Time & Average Turnaround Time
-void calculate_average_times()
-{
-    int total_waiting_time = 0, total_turnaround_time = 0;
     
-    // Implementation of rest of your code...
-
-    printf("\nAverage Waiting Time: %.2f\n", (float)total_waiting_time / num_processes);
-    printf("\nAverage Turnaround Time: %.2f\n", (float)total_turnaround_time / num_processes);
-}
-
-/* ========================================================================================*/
-// Display results
-void display_results()
-{
-    // Display Individual Process Turnaround Time & Waiting Time
-    printf("\nProcess\t   Waiting Time\t    Turnaround Time\n");
-    for (int i = 0; i < num_processes; i++)
-    {
-        printf("  P%d\t       %d\t\t %d\n", processes[i].pid, processes[i].waiting_time, processes[i].turnaround_time);
+    // print results
+    printf("\nRound Robin (RR) Statistics...\n\n");
+    printf("Process    Waiting Time    Turnaround Time\n");
+    for (int i = 0; i < num_processes; i++) {
+        printf("P%-1d%14d%18d\n",
+               proc[i].pid,
+               proc[i].waiting_time,
+               proc[i].turnaround_time);
     }
-
-    // Display Average Waiting Time & Average Turnaround Time
-    calculate_average_times();
+    printf("\nAverage Waiting Time: %.2f\n", total_waiting / num_processes);
+    printf("\nAverage Turnaround Time: %.2f\n", total_turnaround / num_processes);
 }
 
-/* ========================================================================================*/
-// First-Come, First-Served (FCFS) Scheduling
-void fcfs()
-{
-
-    // Reset process states before execution
-    reset_process_states();
-
-    // Implementation of rest of your code...
-    int current_time = 0
-    for (int i = 0; i < n; i++)
-    {
-        if (current_time < proc[i].arrival_time)
-        current_time = proc[i].arrival_time;
-        proc[i].waiting_time = current_time - proc[i].arrival_time;
-        proc[i].turnaround_time = proc[i].waiting_time + proc[i].burst_time;
-        current_time += proc[i].burst_time;
+// ---------------------------------------------------------------------------
+// 5. PRIORITY (PR) - NONPREEMPTIVE SCHEDULING
+// ---------------------------------------------------------------------------
+void priority_scheduling(Process process_list[], int num_processes) {
+    Process proc[MAX_PROCESSES];
+    for (int i = 0; i < num_processes; i++) {
+        proc[i] = process_list[i];
     }
     
-    printf("***************************************************************************************\n\n");
-    printf("FCFS Statistics...\n");
-    display_results(); // Display Statistics
-    printf("\n***************************************************************************************\n");
+    int completed = 0;
+    int current_time = 0;
+    float total_waiting = 0, total_turnaround = 0;
+    int visited[MAX_PROCESSES] = {0};
+    
+    while (completed < num_processes) {
+        int selected_index = -1;
+        int best_priority = 99999;
+        
+        // pick the process with the highest priority (lowest numeric value)
+        for (int i = 0; i < num_processes; i++) {
+            if (!visited[i] &&
+                proc[i].arrival_time <= current_time &&
+                proc[i].priority < best_priority) {
+                best_priority = proc[i].priority;
+                selected_index = i;
+            }
+        }
+        if (selected_index == -1) {
+            current_time++;
+            continue;
+        }
+        visited[selected_index] = 1;
+        
+        proc[selected_index].waiting_time =
+            current_time - proc[selected_index].arrival_time;
+        current_time += proc[selected_index].burst_time;
+        proc[selected_index].turnaround_time =
+            proc[selected_index].waiting_time + proc[selected_index].burst_time;
+        
+        total_waiting += proc[selected_index].waiting_time;
+        total_turnaround += proc[selected_index].turnaround_time;
+        completed++;
+    }
+    
+    // print results
+    printf("\nPriority (PR) - Nonpreemptive Statistics...\n\n");
+    printf("Process    Waiting Time    Turnaround Time\n");
+    for (int i = 0; i < num_processes; i++) {
+        printf("P%-1d%14d%18d\n",
+               proc[i].pid,
+               proc[i].waiting_time,
+               proc[i].turnaround_time);
+    }
+    printf("\nAverage Waiting Time: %.2f\n", total_waiting / num_processes);
+    printf("\nAverage Turnaround Time: %.2f\n", total_turnaround / num_processes);
 }
 
-/* ========================================================================================*/
-// Shortest Job First (SJF) - Non-Preemptive
-void sjf_non_preemptive()
-{
-    // Reset process states
-    reset_process_states();
-
-    // Implementation of rest of your code...
-
-    // Display results
-    printf("***************************************************************************************\n\n");
-    printf("SJF (Non-Preemptive) Statistics...\n");
-    display_results();
-    printf("\n***************************************************************************************\n\n");
-}
-
-/* ========================================================================================*/
-// Shortest Remaining Time (SRT) - SJF Preemptive
-void srt_preemptive()
-{
-
-    // Reset process states before execution
-    reset_process_states();
-
-    // Implementation of rest of your code...
-
-    printf("***************************************************************************************\n\n");
-    printf("SRT (Preemptive) Statistics...\n");
-    display_results();
-    printf("\n***************************************************************************************\n\n");
-}
-
-/* ========================================================================================*/
-// Round Robin (RR) Scheduling
-void round_robin(int time_quantum)
-{
-
-    // Reset process states before execution
-    reset_process_states();
-
-    // Implementation of rest of your code...
-
-    printf("***************************************************************************************\n\n");
-    printf("RR Statistics (Time Quantum = %d)...\n", time_quantum);
-    display_results(); // Display Statistics
-    printf("\n***************************************************************************************\n");
-}
-
-/* ========================================================================================*/
-// Priority Scheduling - Non-Preemptive
-void priority_non_preemptive()
-{
-
-    // Reset process states before execution
-    reset_process_states();
-
-    // Implementation of rest of your code...
-    int curr_time = 0;
-
-    for (int i = 0; i < num_processes; i++)
-    {
-        if (curr_time < processes[i].arrival_time)
-            curr_time = processes[i].arrival_time;
-        processes[i].waiting_time = curr_time - processes[i].arrival_time;
-        processes[i].turnaround_time = processes[i].waiting_time + processes[i].burst_time;
-        processes[i].completion_time = curr_time + processes[i].burst_time;
-       
-        curr_time = processes[i].burst_time;
-    }   
-
-    printf("***************************************************************************************\n\n");
-    printf("Priority (PR) - Nonpreemptive Statistics...\n");
-    display_results(); // Display Statistics
-    printf("\n***************************************************************************************\n");
+// ---------------------------------------------------------------------------
+// MAIN
+// ---------------------------------------------------------------------------
+int main() {
+    Process process_list[MAX_PROCESSES];
+    int num_processes = read_processes(process_list);
+    
+    if (num_processes == 0) {
+        printf("No process data found in input.txt. Please check the file format.\n");
+        return 1;
+    }
+    
+    int choice;
+    do {
+        printf("\n============================\n");
+        printf("CPU Scheduling Algorithms Menu\n");
+        printf("1. First-Come, First-Served (FCFS)\n");
+        printf("2. Shortest Job First (SJF) - Nonpreemptive\n");
+        printf("3. Shortest Remaining Time (SRT) - Preemptive\n");
+        printf("4. Round Robin (RR)\n");
+        printf("5. Priority Scheduling (Nonpreemptive)\n");
+        printf("0. Exit\n");
+        printf("============================\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+        
+        switch (choice) {
+            case 1:
+                fcfs(process_list, num_processes);
+                break;
+            case 2:
+                sjf(process_list, num_processes);
+                break;
+            case 3:
+                srt(process_list, num_processes);
+                break;
+            case 4:
+                round_robin(process_list, num_processes);
+                break;
+            case 5:
+                priority_scheduling(process_list, num_processes);
+                break;
+            case 0:
+                printf("Exiting program...\n");
+                break;
+            default:
+                printf("Invalid choice. Please try again.\n");
+        }
+    } while (choice != 0);
+    
+    return 0;
 }

@@ -345,6 +345,18 @@ void priority_non_preemptive()
     reset_process_states();
 
     // Implementation of rest of your code...
+    int curr_time = 0;
+
+    for (int i = 0; i < num_processes; i++)
+    {
+        if (curr_time < processes[i].arrival_time)
+            curr_time = processes[i].arrival_time;
+        processes[i].waiting_time = curr_time - processes[i].arrival_time;
+        processes[i].turnaround_time = processes[i].waiting_time + processes[i].burst_time;
+        processes[i].completion_time = curr_time + processes[i].burst_time;
+       
+        curr_time = processes[i].burst_time;
+    }   
 
     printf("***************************************************************************************\n\n");
     printf("Priority (PR) - Nonpreemptive Statistics...\n");

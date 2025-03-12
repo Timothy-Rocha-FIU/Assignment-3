@@ -272,7 +272,16 @@ void fcfs()
     reset_process_states();
 
     // Implementation of rest of your code...
-
+    int current_time = 0
+    for (int i = 0; i < n; i++)
+    {
+        if (current_time < proc[i].arrival_time)
+        current_time = proc[i].arrival_time;
+        proc[i].waiting_time = current_time - proc[i].arrival_time;
+        proc[i].turnaround_time = proc[i].waiting_time + proc[i].burst_time;
+        current_time += proc[i].burst_time;
+    }
+    
     printf("***************************************************************************************\n\n");
     printf("FCFS Statistics...\n");
     display_results(); // Display Statistics
